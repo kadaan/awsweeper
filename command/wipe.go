@@ -75,7 +75,7 @@ func (c *Wipe) Run(args []string) int {
 
 		filteredRes := c.filter.Apply(resType, deletableResources, rawResources, c.client)
 		for _, res := range filteredRes {
-			print(res, c.outputType)
+			print(resType, res, c.outputType)
 			if !c.dryRun {
 				c.wipe(res)
 			}
@@ -85,25 +85,21 @@ func (c *Wipe) Run(args []string) int {
 	return 0
 }
 
-func print(res resource.Resources, outputType string) {
-	if len(res) == 0 {
-		return
-	}
-
+func print(resourceType resource.TerraformResourceType, res resource.Resources, outputType string) {
 	switch strings.ToLower(outputType) {
 	case "string":
-		printString(res)
+		printString(resourceType, res)
 	case "json":
-		printJson(res)
+		printJson(resourceType, res)
 	case "yaml":
-		printYaml(res)
+		printYaml(resourceType, res)
 	default:
 		logrus.WithField("output", outputType).Fatal("Unsupported output type")
 	}
 }
 
-func printString(res resource.Resources) {
-	fmt.Printf("\n---\nType: %s\nFound: %d\n\n", res[0].Type, len(res))
+func printString(resourceType resource.TerraformResourceType, res resource.Resources) {
+	fmt.Printf("\n---\nType: %s\nFound: %d\n\n", resourceType, len(res))
 
 	for _, r := range res {
 		printStat := fmt.Sprintf("\tId:\t\t%s", r.ID)
@@ -131,7 +127,7 @@ func printString(res resource.Resources) {
 	fmt.Print("---\n\n")
 }
 
-func printJson(res resource.Resources) {
+func printJson(resourceType resource.TerraformResourceType, res resource.Resources) {
 	b, err := json.Marshal(res)
 	if err != nil {
 		logrus.WithError(err).Fatal()
@@ -140,7 +136,7 @@ func printJson(res resource.Resources) {
 	fmt.Print(string(b))
 }
 
-func printYaml(res resource.Resources) {
+func printYaml(resourceType resource.TerraformResourceType, res resource.Resources) {
 	b, err := yaml.Marshal(res)
 	if err != nil {
 		logrus.WithError(err).Fatal()
