@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -173,6 +174,11 @@ type AWS struct {
 	stsiface.STSAPI
 }
 
+type LoadBalancerDescription struct {
+	elb.LoadBalancerDescription
+	Tags []*elb.Tag
+}
+
 // NewAWS creates an AWS instance
 func NewAWS(s *session.Session) *AWS {
 	return &AWS{
@@ -198,6 +204,7 @@ type Resource struct {
 	// ID by which the resource can be deleted (in some cases the ID is the resource's name, but not always;
 	// that's why we need the deleteIDs map)
 	ID      string
+	Region  string
 	Tags    map[string]string
 	Created *time.Time
 	Attrs   map[string]string
@@ -307,8 +314,53 @@ func (a *AWS) elbs() (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return output.LoadBalancerDescriptions, nil
+	loadBalancerNames := make([]string, len(output.LoadBalancerDescriptions))
+	loadBalancerNameMap := make(map[string]*elb.LoadBalancerDescription)
+	for i, desc := range output.LoadBalancerDescriptions {
+		loadBalancerNames[i] = *desc.LoadBalancerName
+		loadBalancerNameMap[*(desc.LoadBalancerName)] = desc
+	}
+
+	tagDescriptions, err := a.findElbTags(loadBalancerNames)
+	if err != nil {
+		return nil, err
+	}
+	loadBalancers := make([]*LoadBalancerDescription, len(output.LoadBalancerDescriptions))
+	for i, tagDesc := range tagDescriptions {
+		loadBalancer := loadBalancerNameMap[*(tagDesc.LoadBalancerName)]
+		loadBalancers[i] = &LoadBalancerDescription{*loadBalancer, tagDesc.Tags}
+	}
+	return loadBalancers, nil
 }
+
+func (a *AWS) findElbTags(loadBalancerNames []string) ([]*elb.TagDescription, error) {
+	var dividedNames [][]string
+	chunkSize := 20
+	for i := 0; i < len(loadBalancerNames); i += chunkSize {
+		end := i + chunkSize
+		if end > len(loadBalancerNames) {
+			end = len(loadBalancerNames)
+		}
+		dividedNames = append(dividedNames, loadBalancerNames[i:end])
+	}
+
+	var tagDescriptions []*elb.TagDescription
+
+	for _, names := range dividedNames {
+		awsNames := make([]*string, len(names))
+		for i, n := range names {
+			awsNames[i] = aws.String(n)
+		}
+		resp, err := a.ELBAPI.DescribeTags(&elb.DescribeTagsInput{ LoadBalancerNames: awsNames })
+		if err != nil {
+			return nil, fmt.Errorf("DescribeTags SDK error: %v", err)
+		}
+		tagDescriptions = append(tagDescriptions, resp.TagDescriptions...)
+	}
+
+	return tagDescriptions, nil
+}
+
 
 func (a *AWS) vpcEndpoints() (interface{}, error) {
 	output, err := a.DescribeVpcEndpoints(&ec2.DescribeVpcEndpointsInput{})
