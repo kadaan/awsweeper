@@ -31,6 +31,11 @@ type Wipe struct {
 	outputType  string
 }
 
+type filteredResource struct {
+	resourceType resource.TerraformResourceType
+	resources []resource.Resources
+}
+
 // Run executes the wipe command.
 func (c *Wipe) Run(args []string) int {
 	if len(args) == 1 {
@@ -47,21 +52,9 @@ func (c *Wipe) Run(args []string) int {
 
 	if c.dryRun {
 		logrus.Info("This is a test run, nothing will be deleted!")
-	} else if !c.forceDelete {
-		v, err := c.UI.Ask(
-			"Do you really want to delete resources filtered by '" + args[0] + "'?\n" +
-				"Only 'yes' will be accepted to approve.\n\n" +
-				"Enter a value: ")
-
-		if err != nil {
-			fmt.Println("Error asking for approval: {{err}}", err)
-			return 1
-		}
-		if v != "yes" {
-			return 0
-		}
 	}
 
+	var filteredResources = make([]filteredResource, 0)
 	for _, resType := range c.filter.Types() {
 		rawResources, err := c.client.RawResources(resType)
 		if err != nil {
@@ -74,10 +67,39 @@ func (c *Wipe) Run(args []string) int {
 		}
 
 		filteredRes := c.filter.Apply(resType, deletableResources, rawResources, c.client)
-		for _, res := range filteredRes {
-			print(resType, res, c.outputType)
-			if !c.dryRun {
-				c.wipe(res)
+		filteredResources = append(filteredResources, filteredResource{ resourceType: resType, resources: filteredRes })
+	}
+
+	if c.dryRun {
+		for _, filteredResource := range filteredResources {
+			for _, resource := range filteredResource.resources {
+				print(filteredResource.resourceType, resource, c.outputType)
+			}
+		}
+	} else {
+		if !c.forceDelete {
+			for _, filteredResource := range filteredResources {
+				for _, resource := range filteredResource.resources {
+					print(filteredResource.resourceType, resource, c.outputType)
+				}
+			}
+			v, err := c.UI.Ask(
+				"Do you really want to delete resources filtered by '" + args[0] + "'?\n" +
+					"Only 'yes' will be accepted to approve.\n\n" +
+					"Enter a value: ")
+
+			if err != nil {
+				fmt.Printf("Error asking for approval: %e\n", err)
+				return 1
+			}
+			if v != "yes" {
+				return 0
+			}
+			for _, filteredResource := range filteredResources {
+				for _, resource := range filteredResource.resources {
+					print(filteredResource.resourceType, resource, c.outputType)
+					c.wipe(resource)
+				}
 			}
 		}
 	}
