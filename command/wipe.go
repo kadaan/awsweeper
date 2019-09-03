@@ -78,27 +78,33 @@ func (c *Wipe) Run(args []string) int {
 		}
 	} else {
 		if !c.forceDelete {
+			hasResources := false
 			for _, filteredResource := range filteredResources {
 				for _, resource := range filteredResource.resources {
+					if len(resource) > 0 {
+						hasResources = true
+					}
 					print(filteredResource.resourceType, resource, c.outputType)
 				}
 			}
-			v, err := c.UI.Ask(
-				"Do you really want to delete resources filtered by '" + args[0] + "'?\n" +
-					"Only 'yes' will be accepted to approve.\n\n" +
-					"Enter a value: ")
+			if hasResources {
+				v, err := c.UI.Ask(
+					"Do you really want to delete resources filtered by '" + args[0] + "'?\n" +
+						"Only 'yes' will be accepted to approve.\n\n" +
+						"Enter a value: ")
 
-			if err != nil {
-				fmt.Printf("Error asking for approval: %e\n", err)
-				return 1
-			}
-			if v != "yes" {
-				return 0
-			}
-			for _, filteredResource := range filteredResources {
-				for _, resource := range filteredResource.resources {
-					print(filteredResource.resourceType, resource, c.outputType)
-					c.wipe(resource)
+				if err != nil {
+					fmt.Printf("Error asking for approval: %e\n", err)
+					return 1
+				}
+				if v != "yes" {
+					return 0
+				}
+				for _, filteredResource := range filteredResources {
+					for _, resource := range filteredResource.resources {
+						print(filteredResource.resourceType, resource, c.outputType)
+						c.wipe(resource)
+					}
 				}
 			}
 		}
