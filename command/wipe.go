@@ -3,11 +3,10 @@ package command
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"sync"
-
-	"log"
 
 	"github.com/cloudetc/awsweeper/resource"
 	"github.com/hashicorp/terraform/terraform"
@@ -45,23 +44,7 @@ func (c *Wipe) Run(args []string) int {
 		return 1
 	}
 
-	if c.dryRun {
-		logrus.Info("This is a test run, nothing will be deleted!")
-	} else if !c.forceDelete {
-		v, err := c.UI.Ask(
-			"Do you really want to delete resources filtered by '" + args[0] + "'?\n" +
-				"Only 'yes' will be accepted to approve.\n\n" +
-				"Enter a value: ")
-
-		if err != nil {
-			fmt.Println("Error asking for approval: {{err}}", err)
-			return 1
-		}
-		if v != "yes" {
-			return 0
-		}
-	}
-
+	var resourcesToDelete [][]resource.Resources
 	for _, resType := range c.filter.Types() {
 		rawResources, err := c.client.RawResources(resType)
 		if err != nil {
@@ -74,10 +57,39 @@ func (c *Wipe) Run(args []string) int {
 		}
 
 		filteredRes := c.filter.Apply(resType, deletableResources, rawResources, c.client)
-		for _, res := range filteredRes {
-			print(res, c.outputType)
-			if !c.dryRun {
-				c.wipe(res)
+		if len(filteredRes) > 0 {
+			resourcesToDelete = append(resourcesToDelete, filteredRes)
+
+		}
+	}
+
+	if len(resourcesToDelete) > 0 {
+		for _, resources := range resourcesToDelete {
+			for _, resource := range resources {
+				print(resource, c.outputType)
+			}
+		}
+		if c.dryRun {
+			logrus.Info("This is a test run, nothing will be deleted!")
+		} else {
+			if !c.forceDelete {
+				v, err := c.UI.Ask(
+					"Do you really want to delete resources filtered by '" + args[0] + "'?\n" +
+						"Only 'yes' will be accepted to approve.\n\n" +
+						"Enter a value: ")
+
+				if err != nil {
+					fmt.Println("Error asking for approval: {{err}}", err)
+					return 1
+				}
+				if v != "yes" {
+					return 0
+				}
+			}
+			for _, resources := range resourcesToDelete {
+				for _, resource := range resources {
+					c.wipe(resource)
+				}
 			}
 		}
 	}
@@ -158,7 +170,7 @@ func (c *Wipe) wipe(res resource.Resources) {
 	if len(res) == 0 {
 		return
 	}
-
+	
 	ii := &terraform.InstanceInfo{
 		Type: string(res[0].Type),
 	}

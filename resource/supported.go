@@ -272,7 +272,8 @@ func (a *AWS) RawResources(resType TerraformResourceType) (interface{}, error) {
 }
 
 func (a *AWS) instances() (interface{}, error) {
-	output, err := a.DescribeInstances(&ec2.DescribeInstancesInput{
+	var instances []*ec2.Instance
+	err := a.DescribeInstancesPages(&ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
 			{
 				Name: aws.String("instance-state-name"),
@@ -282,15 +283,15 @@ func (a *AWS) instances() (interface{}, error) {
 				},
 			},
 		},
+	}, func(output *ec2.DescribeInstancesOutput, lastPage bool) bool {
+		for _, r := range output.Reservations {
+			instances = append(instances, r.Instances...)
+		}
+		return true
 	})
 
 	if err != nil {
 		return nil, err
-	}
-
-	var instances []*ec2.Instance
-	for _, r := range output.Reservations {
-		instances = append(instances, r.Instances...)
 	}
 
 	return instances, nil
@@ -305,11 +306,16 @@ func (a *AWS) keyPairs() (interface{}, error) {
 }
 
 func (a *AWS) elbs() (interface{}, error) {
-	output, err := a.ELBAPI.DescribeLoadBalancers(&elb.DescribeLoadBalancersInput{})
+	var loadBalancers []*elb.LoadBalancerDescription
+	err := a.ELBAPI.DescribeLoadBalancersPages(&elb.DescribeLoadBalancersInput{},
+		func(output *elb.DescribeLoadBalancersOutput, lastPage bool) bool {
+			loadBalancers = append(loadBalancers, output.LoadBalancerDescriptions...)
+			return true
+		})
 	if err != nil {
 		return nil, err
 	}
-	return output.LoadBalancerDescriptions, nil
+	return loadBalancers, nil
 }
 
 func (a *AWS) vpcEndpoints() (interface{}, error) {
@@ -322,7 +328,8 @@ func (a *AWS) vpcEndpoints() (interface{}, error) {
 
 // TODO support findTags
 func (a *AWS) natGateways() (interface{}, error) {
-	output, err := a.DescribeNatGateways(&ec2.DescribeNatGatewaysInput{
+	var natGateways []*ec2.NatGateway
+	err := a.DescribeNatGatewaysPages(&ec2.DescribeNatGatewaysInput{
 		Filter: []*ec2.Filter{
 			{
 				Name: aws.String("state"),
@@ -331,28 +338,39 @@ func (a *AWS) natGateways() (interface{}, error) {
 				},
 			},
 		},
+	}, func(output *ec2.DescribeNatGatewaysOutput, lastPage bool) bool {
+		natGateways = append(natGateways, output.NatGateways...)
+		return true
 	})
 
 	if err != nil {
 		return nil, err
 	}
-	return output.NatGateways, nil
+	return natGateways, nil
 }
 
 func (a *AWS) cloudformationStacks() (interface{}, error) {
-	output, err := a.DescribeStacks(&cloudformation.DescribeStacksInput{})
+	var stacks []*cloudformation.Stack
+	err := a.DescribeStacksPages(&cloudformation.DescribeStacksInput{}, func(output *cloudformation.DescribeStacksOutput, lastPage bool) bool {
+		stacks = append(stacks, output.Stacks...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Stacks, nil
+	return stacks, nil
 }
 
 func (a *AWS) route53Zones() (interface{}, error) {
-	output, err := a.ListHostedZones(&route53.ListHostedZonesInput{})
+	var hostedZones []*route53.HostedZone
+	err := a.ListHostedZonesPages(&route53.ListHostedZonesInput{}, func(output *route53.ListHostedZonesOutput, lastPage bool) bool {
+		hostedZones = append(hostedZones, output.HostedZones...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.HostedZones, nil
+	return hostedZones, nil
 }
 
 func (a *AWS) efsFileSystems() (interface{}, error) {
@@ -368,11 +386,15 @@ func (a *AWS) efsFileSystems() (interface{}, error) {
 // support findTags
 // attached to subnet
 func (a *AWS) networkInterfaces() (interface{}, error) {
-	output, err := a.DescribeNetworkInterfaces(&ec2.DescribeNetworkInterfacesInput{})
+	var networkInterfaces []*ec2.NetworkInterface
+	err := a.DescribeNetworkInterfacesPages(&ec2.DescribeNetworkInterfacesInput{}, func(output *ec2.DescribeNetworkInterfacesOutput, lastPage bool) bool {
+		networkInterfaces = append(networkInterfaces, output.NetworkInterfaces...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.NetworkInterfaces, nil
+	return networkInterfaces, nil
 }
 
 func (a *AWS) eips() (interface{}, error) {
@@ -400,19 +422,27 @@ func (a *AWS) subnets() (interface{}, error) {
 }
 
 func (a *AWS) routeTables() (interface{}, error) {
-	output, err := a.DescribeRouteTables(&ec2.DescribeRouteTablesInput{})
+	var routeTables []*ec2.RouteTable
+	err := a.DescribeRouteTablesPages(&ec2.DescribeRouteTablesInput{}, func(output *ec2.DescribeRouteTablesOutput, lastPage bool) bool {
+		routeTables = append(routeTables, output.RouteTables...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.RouteTables, nil
+	return routeTables, nil
 }
 
 func (a *AWS) SecurityGroup() (interface{}, error) {
-	output, err := a.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{})
+	var securityGroups []*ec2.SecurityGroup
+	err := a.DescribeSecurityGroupsPages(&ec2.DescribeSecurityGroupsInput{}, func(output *ec2.DescribeSecurityGroupsOutput, lastPage bool) bool {
+		securityGroups = append(securityGroups, output.SecurityGroups...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.SecurityGroups, nil
+	return securityGroups, nil
 }
 
 func (a *AWS) networkAcls() (interface{}, error) {
@@ -432,59 +462,87 @@ func (a *AWS) vpcs() (interface{}, error) {
 }
 
 func (a *AWS) iamPolicies() (interface{}, error) {
-	output, err := a.ListPolicies(&iam.ListPoliciesInput{})
+	var iamPolicies []*iam.Policy
+	err := a.ListPoliciesPages(&iam.ListPoliciesInput{}, func(output *iam.ListPoliciesOutput, lastPage bool) bool {
+		iamPolicies = append(iamPolicies, output.Policies...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Policies, nil
+	return iamPolicies, nil
 }
 
 func (a *AWS) iamGroups() (interface{}, error) {
-	output, err := a.ListGroups(&iam.ListGroupsInput{})
+	var iamGroups []*iam.Group
+	err := a.ListGroupsPages(&iam.ListGroupsInput{}, func(output *iam.ListGroupsOutput, lastPage bool) bool {
+		iamGroups = append(iamGroups, output.Groups...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Groups, nil
+	return iamGroups, nil
 }
 
 func (a *AWS) iamUsers() (interface{}, error) {
-	output, err := a.ListUsers(&iam.ListUsersInput{})
+	var iamUsers []*iam.User
+	err := a.ListUsersPages(&iam.ListUsersInput{}, func(output *iam.ListUsersOutput, lastPage bool) bool {
+		iamUsers = append(iamUsers, output.Users...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Users, nil
+	return iamUsers, nil
 }
 
 func (a *AWS) iamRoles() (interface{}, error) {
-	output, err := a.ListRoles(&iam.ListRolesInput{})
+	var iamRoles []*iam.Role
+	err := a.ListRolesPages(&iam.ListRolesInput{}, func(output *iam.ListRolesOutput, lastPage bool) bool {
+		iamRoles = append(iamRoles, output.Roles...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Roles, nil
+	return iamRoles, nil
 }
 
 func (a *AWS) iamInstanceProfiles() (interface{}, error) {
-	output, err := a.ListInstanceProfiles(&iam.ListInstanceProfilesInput{})
+	var instanceProfiles []*iam.InstanceProfile
+	err := a.ListInstanceProfilesPages(&iam.ListInstanceProfilesInput{}, func(output *iam.ListInstanceProfilesOutput, lastPage bool) bool {
+		instanceProfiles = append(instanceProfiles, output.InstanceProfiles...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.InstanceProfiles, nil
+	return instanceProfiles, nil
 }
 
 func (a *AWS) KmsAliases() (interface{}, error) {
-	output, err := a.ListAliases(&kms.ListAliasesInput{})
+	var aliases []*kms.AliasListEntry
+	err := a.ListAliasesPages(&kms.ListAliasesInput{}, func(output *kms.ListAliasesOutput, lastPage bool) bool {
+		aliases = append(aliases, output.Aliases...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Aliases, nil
+	return aliases, nil
 }
 
 func (a *AWS) KmsKeys() (interface{}, error) {
-	output, err := a.ListKeys(&kms.ListKeysInput{})
+	var keys []*kms.KeyListEntry
+	err := a.ListKeysPages(&kms.ListKeysInput{}, func(output *kms.ListKeysOutput, lastPage bool) bool {
+		keys = append(keys, output.Keys...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Keys, nil
+	return keys, nil
 }
 
 func (a *AWS) s3Buckets() (interface{}, error) {
@@ -496,7 +554,8 @@ func (a *AWS) s3Buckets() (interface{}, error) {
 }
 
 func (a *AWS) ebsSnapshots() (interface{}, error) {
-	output, err := a.DescribeSnapshots(&ec2.DescribeSnapshotsInput{
+	var snapshots []*ec2.Snapshot
+	err := a.DescribeSnapshotsPages(&ec2.DescribeSnapshotsInput{
 		Filters: []*ec2.Filter{
 			{
 				Name: aws.String("owner-id"),
@@ -505,20 +564,27 @@ func (a *AWS) ebsSnapshots() (interface{}, error) {
 				},
 			},
 		},
+	}, func(output *ec2.DescribeSnapshotsOutput, lastPage bool) bool {
+		snapshots = append(snapshots, output.Snapshots...)
+		return true
 	})
 
 	if err != nil {
 		return nil, err
 	}
-	return output.Snapshots, nil
+	return snapshots, nil
 }
 
 func (a *AWS) ebsVolumes() (interface{}, error) {
-	output, err := a.DescribeVolumes(&ec2.DescribeVolumesInput{})
+	var volumes []*ec2.Volume
+	err := a.DescribeVolumesPages(&ec2.DescribeVolumesInput{}, func(output *ec2.DescribeVolumesOutput, lastPage bool) bool {
+		volumes = append(volumes, output.Volumes...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.Volumes, nil
+	return volumes, nil
 }
 
 func (a *AWS) amis() (interface{}, error) {
@@ -540,19 +606,28 @@ func (a *AWS) amis() (interface{}, error) {
 }
 
 func (a *AWS) autoscalingGroups() (interface{}, error) {
-	output, err := a.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{})
+	var autoScalingGroups []*autoscaling.Group
+	err := a.DescribeAutoScalingGroupsPages(&autoscaling.DescribeAutoScalingGroupsInput{}, func(output *autoscaling.DescribeAutoScalingGroupsOutput, lastPage bool) bool {
+		autoScalingGroups = append(autoScalingGroups, output.AutoScalingGroups...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.AutoScalingGroups, nil
+	return autoScalingGroups, nil
 }
 
 func (a *AWS) launchConfigurations() (interface{}, error) {
-	output, err := a.DescribeLaunchConfigurations(&autoscaling.DescribeLaunchConfigurationsInput{})
+
+	var launchConfigurations []*autoscaling.LaunchConfiguration
+	err := a.DescribeLaunchConfigurationsPages(&autoscaling.DescribeLaunchConfigurationsInput{}, func(output *autoscaling.DescribeLaunchConfigurationsOutput, lastPage bool) bool {
+		launchConfigurations = append(launchConfigurations, output.LaunchConfigurations...)
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
-	return output.LaunchConfigurations, nil
+	return launchConfigurations, nil
 }
 
 // callerIdentity returns the account ID of the AWS account for the currently used credentials
