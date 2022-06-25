@@ -3,7 +3,6 @@ package resource
 import (
 	"fmt"
 
-	"github.com/apex/log"
 	"github.com/jckuester/awstools-lib/terraform"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
@@ -11,20 +10,6 @@ import (
 
 // Apply applies the filter to the given resources.
 func (f Filter) Apply(res []terraform.Resource) []terraform.Resource {
-	for i, r := range res {
-		tags, err := GetTags(&r)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"type": r.Type,
-				"id":   r.ID,
-			}).WithError(err).Debug("failed to get tags")
-
-			continue
-		}
-
-		res[i].Tags = tags
-	}
-
 	var result []terraform.Resource
 
 	for _, r := range res {

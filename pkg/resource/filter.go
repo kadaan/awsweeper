@@ -21,6 +21,7 @@ type Filter map[string][]TypeFilter
 
 // TypeFilter represents an entry in the yaml file to filter the resources of a particular resource type.
 type TypeFilter struct {
+	Region  *StringFilter           `yaml:",omitempty"`
 	ID      *StringFilter           `yaml:",omitempty"`
 	Tagged  *bool                   `yaml:",omitempty"`
 	Tags    map[string]StringFilter `yaml:",omitempty"`
@@ -90,6 +91,22 @@ func (f Filter) Types() []string {
 	})
 
 	return resTypes
+}
+
+// MatchID checks whether a resource Region matches the filter.
+func (f TypeFilter) matchRegion(region string) bool {
+	if f.Region == nil {
+		return true
+	}
+
+	if ok, err := f.Region.matches(region); ok {
+		if err != nil {
+			log.WithError(err).Fatal("failed to match Region")
+		}
+		return true
+	}
+
+	return false
 }
 
 // MatchID checks whether a resource ID matches the filter.
@@ -249,10 +266,18 @@ func (f Filter) Match(r terraform.Resource) bool {
 	}
 
 	for _, rtf := range resTypeFilters {
-		if rtf.MatchTagged(r.Tags) &&
+		if r.UpdatableResource == nil {
+			if (r.Tags == nil || rtf.MatchTagged(r.Tags) && rtf.MatchTags(r.Tags)) &&
+				rtf.matchID(r.ID) &&
+				rtf.matchRegion(r.Region) &&
+				(r.CreatedAt == nil || rtf.matchCreated(r.CreatedAt)) {
+				return true
+			}
+		} else if rtf.MatchTagged(r.Tags) &&
 			rtf.MatchTags(r.Tags) &&
 			rtf.matchID(r.ID) &&
-			rtf.matchCreated(r.CreatedAt) {
+			rtf.matchCreated(r.CreatedAt) &&
+			rtf.matchRegion(r.Region) {
 			return true
 		}
 	}

@@ -33,7 +33,7 @@ func mainExitCode() int {
 	var outputType string
 	var parallel int
 	var profile string
-	var region string
+	var regions []string
 	var timeout string
 	var version bool
 
@@ -47,7 +47,7 @@ func mainExitCode() int {
 	flags.BoolVar(&dryRun, "dry-run", false, "Don't delete anything, just show what would be deleted")
 	flags.BoolVar(&logDebug, "debug", false, "Enable debug logging")
 	flags.StringVarP(&profile, "profile", "p", "", "The AWS profile for the account to delete resources in")
-	flags.StringVarP(&region, "region", "r", "", "The region to delete resources in")
+	flags.StringSliceVarP(&regions, "regions", "r", []string{}, "The regions to delete resources in")
 	flags.IntVar(&parallel, "parallel", 10, "Limit the number of concurrent delete operations")
 	flags.BoolVar(&version, "version", false, "Show application version")
 	flags.BoolVar(&force, "force", false, "Delete without asking for confirmation")
@@ -109,7 +109,6 @@ func mainExitCode() int {
 	}
 
 	var profiles []string
-	var regions []string
 
 	if profile != "" {
 		profiles = []string{profile}
@@ -118,10 +117,6 @@ func mainExitCode() int {
 		if ok {
 			profiles = []string{env}
 		}
-	}
-
-	if region != "" {
-		regions = []string{region}
 	}
 
 	timeoutDuration, err := time.ParseDuration(timeout)
@@ -177,12 +172,16 @@ func mainExitCode() int {
 		}
 	}()
 
-	internal.LogTitle("showing resources that would be deleted (dry run)")
+	if dryRun {
+		internal.LogTitle("showing resources that would be deleted (dry run)")
+	} else {
+		internal.LogTitle("showing resources that will be deleted")
+	}
 	var resources []terradozerRes.DestroyableResource
 
 	resourcesCh := make(chan []terradozerRes.DestroyableResource, 1)
 	go func() {
-		resourcesCh <- resource.List(context.Background(), filter, clients, providers, outputType)
+		resourcesCh <- resource.List(ctx, parallel, filter, clients, providers, outputType)
 	}()
 	select {
 	case <-ctx.Done():
